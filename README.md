@@ -1,0 +1,1 @@
+`luajit -e "require('profiler').Start() require('bench') require('profiler').Stop()"`
