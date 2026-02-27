@@ -4,7 +4,7 @@ a luajit profiler that builds an interactive static html page with a timeline. y
 
 `luajit -e "local p = require('profiler').New() require('bench') p:Stop()"`
 
-<img width="1552" height="1120" alt="image" src="https://github.com/user-attachments/assets/34ecc54a-cc80-4c27-89f7-ed852c3eeb8e" />
+<img width="1130" height="1463" alt="image" src="https://github.com/user-attachments/assets/fd4d93d9-8160-4461-ae9f-440e6e8f8bf6" />
 
 ## API Reference
 
