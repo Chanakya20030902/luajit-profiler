@@ -105,17 +105,6 @@ local function format_func_info(fi--[[#: jit_util_funcinfo]], func--[[#: AnyFunc
 	end
 end
 
-local function translate_stack(stack--[[#: string]])
-	stack = stack:gsub("%[builtin#(%d+)%]", function(n)
-		local num = tonumber(n)
-		return vmdef.ffnames[num] or ("[builtin#" .. n .. "]")
-	end)
-	stack = stack:gsub("@0x%x+\n?", "")
-	stack = stack:gsub("%(command line%)[^\n]*\n?", "")
-	stack = stack:gsub("%s+$", "")
-	return stack
-end
-
 local function json_string(s--[[#: string]])
 	s = s:gsub("\\", "\\\\")
 	s = s:gsub("\"", "\\\"")
@@ -127,13 +116,8 @@ end
 
 -- --- Profiler ---
 local HTML_TEMPLATE--[[#: string]] -- forward declaration, assigned at bottom of file
-local FILE_URL_TEMPLATES = {
-	vscode = "vscode://file/${path}:${line}:1",
-	sublime = "subl://open?url=file://${path}&line=${line}",
-	atom = "atom://core/open/file?filename=${path}&line=${line}",
-}
-local META = {}
-META.__index = META
+local Profiler = {}
+Profiler.__index = Profiler
 --[[#type TEvent = {
 		type = "sample",
 		time = number | nil,
@@ -175,7 +159,7 @@ META.__index = META
 		time = number | nil,
 	}]]
 --[[#-- --- Type Definitions ---
-type META.@SelfArgument = {
+type Profiler.@SelfArgument = {
 	_id = string,
 	_path = string,
 	_file_url = string,
@@ -195,8 +179,6 @@ type META.@SelfArgument = {
 	_strings_flushed = number,
 	_section_stack = List<|string|>,
 	_section_path = string,
-	_simple_times = Map<|string, {total = number, time = number}|>,
-	_simple_stack = List<|string|>,
 	_traces = List<|{id = number, parent_id = number | nil, exit_id = number | nil, depth = number}|>,
 	_trace_count = number,
 	_aborted = List<|boolean|>,
@@ -206,66 +188,28 @@ type META.@SelfArgument = {
 	_file = File | nil,
 	_trace_event_fn = jit_attach_trace | nil,
 	_trace_event_safe_fn = jit_attach_trace | nil,
-	@MetaTable = META,
+	@MetaTable = Profiler,
 }]]
---[[#local type TProfile = META.@SelfArgument]]
+--[[#local type TProfile = Profiler.@SelfArgument]]
 
 -- --- Event accumulation ---
-local function emit(self--[[#: TProfile]], event--[[#: TEvent]])
+function Profiler:EmitEvent(event--[[#: TEvent]])
 	self._event_count = self._event_count + 1
 	event.time = self._get_time()
 	self._events[self._event_count] = event
 end
 
-local function check_flush(self--[[#: TProfile]])
-	local now = self._get_time()
-
-	if now - self._last_flush_time >= self._flush_interval then
-		self._last_flush_time = now
-		self:Save()
-	end
-end
-
--- --- String interning ---
-local function intern(self--[[#: TProfile]], s--[[#: string | nil]])
-	if not s then return -1 end
-
-	local idx = self._string_lookup[s]
-
-	if idx then return idx end
-
-	idx = self._string_count
-	self._string_count = self._string_count + 1
-	self._strings[idx] = s
-	self._string_lookup[s] = idx
-	return idx
-end
-
-local function get_new_strings(self--[[#: TProfile]])--[[#: List<|string|>]]
-	local new = {}
-
-	for i = self._strings_flushed, self._string_count - 1 do
-		new[#new + 1] = self._strings[i]
-	end
-
-	self._strings_flushed = self._string_count
-	return new
-end
-
 -- --- Section tracking ---
-function META:StartSection(name--[[#: string]])
+function Profiler:StartSection(name--[[#: string]])
 	if not self._running then return end
 
-	-- Simple timing
-	self._simple_times[name] = self._simple_times[name] or {total = 0, time = 0}
-	self._simple_times[name].time = table_insert(self._simple_stack, name)
 	-- Event section tracking
 	table_insert(self._section_stack, name)
 	self._section_path = table_concat(self._section_stack, " > ")
-	emit(self, {type = "section_start", name = name, section_path = self._section_path})
+	self:EmitEvent({type = "section_start", name = name, section_path = self._section_path})
 end
 
-function META:StopSection()
+function Profiler:StopSection()
 	if not self._running then return end
 
 	local name = self._section_stack[#self._section_stack]
@@ -275,309 +219,397 @@ function META:StopSection()
 		self._section_path = table_concat(self._section_stack, " > ")
 	end
 
-	emit(self, {type = "section_end", name = name, section_path = self._section_path})
-	-- Simple timing
-	local sname = table_remove(self._simple_stack)
+	self:EmitEvent({type = "section_end", name = name, section_path = self._section_path})
+end
 
-	if sname and self._simple_times[sname] then
-		self._simple_times[sname].total = self._simple_times[sname].total + (
-				self._get_time() - self._simple_times[sname].time
-			)
+do
+	local function on_trace_start(
+		self--[[#: TProfile]],
+		id--[[#: number]],
+		func--[[#: AnyFunction]],
+		pc--[[#: number]],
+		parent_id--[[#: number | nil]],
+		exit_id--[[#: number | string | nil]]
+	)
+		local fi = jutil.funcinfo(func, pc)
+		local loc = format_func_info(fi, func)
+		local depth = 0
+		local parent = parent_id and self._traces[parent_id]
+
+		if parent then depth = (parent.depth or 0) + 1 end
+
+		self._traces[id] = {id = id, parent_id = parent_id, exit_id = exit_id, depth = depth}
+		self._trace_count = self._trace_count + 1
+		self:EmitEvent(
+			{
+				type = "trace_start",
+				id = id,
+				parent_id = parent_id,
+				exit_id = exit_id,
+				depth = depth,
+				func_info = loc,
+			}
+		)
 	end
-end
 
--- --- Trace tracking ---
-local function on_trace_start(
-	self--[[#: TProfile]],
-	id--[[#: number]],
-	func--[[#: AnyFunction]],
-	pc--[[#: number]],
-	parent_id--[[#: number | nil]],
-	exit_id--[[#: number | string | nil]]
-)
-	local fi = jutil.funcinfo(func, pc)
-	local loc = format_func_info(fi, func)
-	local depth = 0
-	local parent = parent_id and self._traces[parent_id]
+	local function on_trace_stop(self--[[#: TProfile]], id--[[#: number]], func--[[#: AnyFunction]])
+		local trace = self._traces[id]
 
-	if parent then depth = (parent.depth or 0) + 1 end
+		if not trace then return end
 
-	self._traces[id] = {id = id, parent_id = parent_id, exit_id = exit_id, depth = depth}
-	self._trace_count = self._trace_count + 1
-	emit(
-		self,
-		{
-			type = "trace_start",
-			id = id,
-			parent_id = parent_id,
-			exit_id = exit_id,
-			depth = depth,
-			func_info = loc,
-		}
-	)
-end
-
-local function on_trace_stop(self--[[#: TProfile]], id--[[#: number]], func--[[#: AnyFunction]])
-	local trace = self._traces[id]
-
-	if not trace then return end
-
-	local ti = jutil.traceinfo(id)
-	local fi = jutil.funcinfo(func)
-	local loc = format_func_info(fi, func)
-	emit(
-		self,
-		{
-			type = "trace_stop",
-			id = id,
-			func_info = loc,
-			linktype = ti and ti.linktype or nil,
-			link_id = ti and ti.link or nil,
-			ir_count = ti and ti.nins or nil,
-			exit_count = ti and ti.nexit or nil,
-		}
-	)
-end
-
-local function on_trace_abort(
-	self--[[#: TProfile]],
-	id--[[#: number]],
-	func--[[#: AnyFunction]],
-	pc--[[#: number]],
-	code--[[#: number]],
-	reason--[[#: number | string]]
-)
-	local trace = self._traces[id]
-
-	if not trace then return end
-
-	local fi = jutil.funcinfo(func, pc)
-	local loc = format_func_info(fi, func)
-	self._aborted[id] = true
-	self._traces[id] = nil
-	self._trace_count = self._trace_count - 1
-	emit(
-		self,
-		{
-			type = "trace_abort",
-			id = id,
-			abort_code = code,
-			abort_reason = format_error(code, reason),
-			func_info = loc,
-		}
-	)
-
-	if code == 27 then
-		local x, interval = self._should_warn_mcode()
-
-		if x and interval then
-			io.write(
-				format_error(code, reason),
-				x == 0 and "" or " [" .. x .. " times the last " .. interval .. " seconds]",
-				"\n"
-			)
-		end
+		local ti = jutil.traceinfo(id)
+		local fi = jutil.funcinfo(func)
+		local loc = format_func_info(fi, func)
+		self:EmitEvent(
+			{
+				type = "trace_stop",
+				id = id,
+				func_info = loc,
+				linktype = ti and ti.linktype or nil,
+				link_id = ti and ti.link or nil,
+				ir_count = ti and ti.nins or nil,
+				exit_count = ti and ti.nexit or nil,
+			}
+		)
 	end
-end
 
-local function on_trace_flush(self)
-	if self._trace_count > 0 then
-		local x, interval = self._should_warn_abort()
+	local function on_trace_abort(
+		self--[[#: TProfile]],
+		id--[[#: number]],
+		func--[[#: AnyFunction]],
+		pc--[[#: number]],
+		code--[[#: number]],
+		reason--[[#: number | string]]
+	)
+		local trace = self._traces[id]
 
-		if x and interval then
-			io.write(
-				"flushing ",
-				tostring(self._trace_count),
-				" traces, ",
-				(x == 0 and "" or "[" .. x .. " times the last " .. interval .. " seconds]"),
-				"\n"
-			)
+		if not trace then return end
+
+		local fi = jutil.funcinfo(func, pc)
+		local loc = format_func_info(fi, func)
+		self._aborted[id] = true
+		self._traces[id] = nil
+		self._trace_count = self._trace_count - 1
+		self:EmitEvent(
+			{
+				type = "trace_abort",
+				id = id,
+				abort_code = code,
+				abort_reason = format_error(code, reason),
+				func_info = loc,
+			}
+		)
+
+		if code == 27 then
+			local x, interval = self._should_warn_mcode()
+
+			if x and interval then
+				io.write(
+					format_error(code, reason),
+					x == 0 and "" or " [" .. x .. " times the last " .. interval .. " seconds]",
+					"\n"
+				)
+			end
 		end
 	end
 
-	self._traces = {}
-	self._aborted = {}
-	self._trace_count = 0
-	emit(self, {type = "trace_flush"})
+	local function on_trace_flush(self)
+		if self._trace_count > 0 then
+			local x, interval = self._should_warn_abort()
+
+			if x and interval then
+				io.write(
+					"flushing ",
+					tostring(self._trace_count),
+					" traces, ",
+					(x == 0 and "" or "[" .. x .. " times the last " .. interval .. " seconds]"),
+					"\n"
+				)
+			end
+		end
+
+		self._traces = {}
+		self._aborted = {}
+		self._trace_count = 0
+		self:EmitEvent({type = "trace_flush"})
+	end
+
+	-- --- Constructor ---
+	function Profiler.New(
+		config--[[#: {
+			id = string | nil,
+			path = string | nil,
+			file_url = string | nil,
+			mode = "line" | "function" | nil,
+			depth = number | nil,
+			sampling_rate = number | nil,
+			flush_interval = number | nil,
+			get_time = function=()>(number) | nil,
+		} | nil]]
+	)
+		config = config or {}
+		local self = setmetatable({}, Profiler)
+		-- Config
+		self._path = config.path or "./profiler_output.html"
+		self._file_url = config.file_url or "vscode://file/${path}:${line}:1"
+		self._mode = config.mode or "line"
+		self._depth = config.depth or 999
+		self._sampling_rate = config.sampling_rate or 1
+		self._flush_interval = config.flush_interval or 3
+		self._get_time = config.get_time
+
+		if not self._get_time then
+			time_function = time_function or get_time_function()
+			self._get_time = time_function
+		end
+
+		-- Lifecycle
+		self._time_start = self._get_time()
+		self._running = true
+		-- Event accumulation
+		self._events = {}
+		self._event_count = 0
+		self._last_flush_time = 0
+		-- String interning
+		self._strings = {}
+		self._string_lookup = {}
+		self._string_count = 0
+		self._strings_flushed = 0
+		-- Section tracking
+		self._section_stack = {}
+		self._section_path = ""
+		-- Trace tracking
+		self._traces = {}
+		self._trace_count = 0
+		self._aborted = {}
+		self._should_warn_mcode = create_warn_log(2)
+		self._should_warn_abort = create_warn_log(8)
+		-- HTML streaming
+		self._last_flushed_idx = 0
+
+		do
+			local html = HTML_TEMPLATE
+			html = html:gsub("%%FILE_URL_JSON%%", function()
+				return json_string(self._file_url)
+			end)
+			local f = assert(io.open(self._path, "w"))
+			f:write(html)
+			f:flush()
+			self._file = f
+		end
+
+		do
+			self._trace_event_fn = function(what, tr, func, pc, otr, oex)
+				if what == "start" then
+					on_trace_start(self, tr, func, pc, otr, oex)
+				elseif what == "stop" then
+					on_trace_stop(self, tr, func)
+				elseif what == "abort" then
+					on_trace_abort(self, tr, func, pc, otr, oex)
+				elseif what == "flush" then
+					on_trace_flush(self)
+				end
+			end--[[# as jit_attach_trace]]
+			self._trace_event_safe_fn = function(what, tr, func, pc, otr, oex)
+				local ok, err = pcall(self._trace_event_fn--[[# as any]], what, tr, func, pc, otr, oex)
+
+				if not ok then
+					io.write("error in trace event (" .. tostring(what) .. "): " .. tostring(err) .. "\n")
+				end
+			end--[[# as jit_attach_trace]]
+			jit.attach(self._trace_event_safe_fn, "trace")
+		end
+
+		do
+			local dumpstack = jprofile.dumpstack
+			local depth = self._depth
+
+			jprofile.start((self._mode == "line" and "l" or "f") .. "i" .. self._sampling_rate, function(thread, sample_count, vmstate)
+				self:EmitEvent(
+					{
+						type = "sample",
+						stack = dumpstack(thread, "pl\n", depth),
+						sample_count = sample_count,
+						vm_state = vmstate,
+						section_path = self._section_path,
+					}
+				)
+				local now = self._get_time()
+
+				if now - self._last_flush_time >= self._flush_interval then
+					self._last_flush_time = now
+					self:Save()
+				end
+			end)
+		end
+
+		return self
+	end
 end
 
-local function attach_traces(self--[[#: TProfile]])
-	self._trace_event_fn = function(what, tr, func, pc, otr, oex)
-		if what == "start" then
-			on_trace_start(self, tr, func, pc, otr, oex)
-		elseif what == "stop" then
-			on_trace_stop(self, tr, func)
-		elseif what == "abort" then
-			on_trace_abort(self, tr, func, pc, otr, oex)
-		elseif what == "flush" then
-			on_trace_flush(self)
-		end
-	end--[[# as jit_attach_trace]]
-	self._trace_event_safe_fn = function(what, tr, func, pc, otr, oex)
-		local ok, err = pcall(self._trace_event_fn--[[# as any]], what, tr, func, pc, otr, oex)
+do
+	local function intern(self--[[#: TProfile]], s--[[#: string | nil]])
+		if not s then return -1 end
 
-		if not ok then
-			io.write("error in trace event (" .. tostring(what) .. "): " .. tostring(err) .. "\n")
+		local idx = self._string_lookup[s]
+
+		if idx then return idx end
+
+		idx = self._string_count
+		self._string_count = self._string_count + 1
+		self._strings[idx] = s
+		self._string_lookup[s] = idx
+		return idx
+	end
+
+	local function get_new_strings(self--[[#: TProfile]])--[[#: List<|string|>]]
+		local new = {}
+
+		for i = self._strings_flushed, self._string_count - 1 do
+			new[#new + 1] = self._strings[i]
 		end
-	end--[[# as jit_attach_trace]]
-	jit.attach(self._trace_event_safe_fn, "trace")
+
+		self._strings_flushed = self._string_count
+		return new
+	end
+
+	local function builtin_replace(n)
+		local num = tonumber(n)
+		return vmdef.ffnames[num] or ("[builtin#" .. n .. "]")
+	end
+
+	local function encode_event(self--[[#: TProfile]], ev--[[#: TEvent]])--[[#: string]]
+		local ti = intern(self, ev.type)
+
+		if ev.type == "sample" then
+			local stack_str = ev.stack
+
+			if stack_str and type(stack_str) == "string" then
+				stack_str = stack_str:gsub("%[builtin#(%d+)%]", builtin_replace)
+				stack_str = stack_str:gsub("@0x%x+\n?", "")
+				stack_str = stack_str:gsub("%(command line%)[^\n]*\n?", "")
+				stack_str = stack_str:gsub("%s+$", "")
+			end
+
+			local frames = {}
+
+			if stack_str and stack_str ~= "" then
+				for line in stack_str:gmatch("[^\n]+") do
+					frames[#frames + 1] = intern(self, line)
+				end
+			end
+
+			return string_format(
+				"[%d,%.6f,[%s],%d,%d,%d]",
+				ti,
+				ev.time,
+				table_concat(frames, ","),
+				ev.sample_count or 0,
+				intern(self, ev.vm_state),
+				intern(self, ev.section_path)
+			)
+		elseif ev.type == "section_start" or ev.type == "section_end" then
+			return string_format(
+				"[%d,%.6f,%d,%d]",
+				ti,
+				ev.time,
+				intern(self, ev.name),
+				intern(self, ev.section_path)
+			)
+		elseif ev.type == "trace_start" then
+			return string_format(
+				"[%d,%.6f,%d,%s,%s,%d,%d]",
+				ti,
+				ev.time,
+				ev.id or 0,
+				ev.parent_id and tostring(ev.parent_id) or "null",
+				ev.exit_id and tostring(ev.exit_id) or "null",
+				ev.depth or 0,
+				intern(self, ev.func_info)
+			)
+		elseif ev.type == "trace_stop" then
+			return string_format(
+				"[%d,%.6f,%d,%d,%d,%s,%d,%d]",
+				ti,
+				ev.time,
+				ev.id or 0,
+				intern(self, ev.func_info),
+				intern(self, ev.linktype),
+				ev.link_id and tostring(ev.link_id) or "null",
+				ev.ir_count or 0,
+				ev.exit_count or 0
+			)
+		elseif ev.type == "trace_abort" then
+			return string_format(
+				"[%d,%.6f,%d,%s,%d,%d]",
+				ti,
+				ev.time,
+				ev.id or 0,
+				ev.abort_code and tostring(ev.abort_code) or "null",
+				intern(self, ev.abort_reason),
+				intern(self, ev.func_info)
+			)
+		else
+			return string_format("[%d,%.6f]", ti, ev.time)
+		end
+	end
+
+	function Profiler:Save()
+		if not self._file then return end
+
+		local count = self._event_count
+
+		if count > self._last_flushed_idx then
+			local start_idx, end_idx = self._last_flushed_idx + 1, count
+
+			if start_idx > end_idx then
+
+			else
+				local f = self._file
+
+				if f then
+					local event_parts = {}
+
+					for i = start_idx, end_idx do
+						event_parts[#event_parts + 1] = encode_event(self, assert(self._events[i], "nil event"))
+					end
+
+					local string_parts = {}
+
+					for _, str in ipairs(get_new_strings(self)) do
+						string_parts[#string_parts + 1] = json_string(str)
+					end
+
+					local strings_js, events_js = "[" .. table_concat(string_parts, ",") .. "]",
+					"[" .. table_concat(event_parts, ",") .. "]"
+					f:write("<script>_C(")
+					f:write(strings_js)
+					f:write(",")
+					f:write(events_js)
+					f:write(");</script>\n")
+					f:flush()
+					self._last_flushed_idx = count
+				end
+			end
+		end
+	end
 end
 
-local function detach_traces(self)
+function Profiler:Stop()
+	if not self._running then return end
+
+	self._running = false
+	jprofile.stop()
+
+	-- Detach trace events
 	if self._trace_event_safe_fn then
 		jit.attach(self._trace_event_safe_fn)
 		self._trace_event_fn = nil
 		self._trace_event_safe_fn = nil
 	end
-end
 
--- --- JIT sampling ---
-local function start_sampling(self--[[#: TProfile]])
-	local dumpstack = jprofile.dumpstack
-	local depth = self._depth
-
-	jprofile.start((self._mode == "line" and "l" or "f") .. "i" .. self._sampling_rate, function(thread, sample_count, vmstate)
-		emit(
-			self,
-			{
-				type = "sample",
-				stack = dumpstack(thread, "pl\n", depth),
-				sample_count = sample_count,
-				vm_state = vmstate,
-				section_path = self._section_path,
-			}
-		)
-		check_flush(self)
-	end)
-end
-
--- --- Encoding ---
-local function encode_event(self--[[#: TProfile]], ev--[[#: TEvent]])--[[#: string]]
-	local ti = intern(self, ev.type)
-
-	if ev.type == "sample" then
-		local stack_str = ev.stack
-
-		if stack_str and type(stack_str) == "string" then
-			stack_str = translate_stack(stack_str)
-		end
-
-		local frames = {}
-
-		if stack_str and stack_str ~= "" then
-			for line in stack_str:gmatch("[^\n]+") do
-				frames[#frames + 1] = intern(self, line)
-			end
-		end
-
-		return string_format(
-			"[%d,%.6f,[%s],%d,%d,%d]",
-			ti,
-			ev.time,
-			table_concat(frames, ","),
-			ev.sample_count or 0,
-			intern(self, ev.vm_state),
-			intern(self, ev.section_path)
-		)
-	elseif ev.type == "section_start" or ev.type == "section_end" then
-		return string_format(
-			"[%d,%.6f,%d,%d]",
-			ti,
-			ev.time,
-			intern(self, ev.name),
-			intern(self, ev.section_path)
-		)
-	elseif ev.type == "trace_start" then
-		return string_format(
-			"[%d,%.6f,%d,%s,%s,%d,%d]",
-			ti,
-			ev.time,
-			ev.id or 0,
-			ev.parent_id and tostring(ev.parent_id) or "null",
-			ev.exit_id and tostring(ev.exit_id) or "null",
-			ev.depth or 0,
-			intern(self, ev.func_info)
-		)
-	elseif ev.type == "trace_stop" then
-		return string_format(
-			"[%d,%.6f,%d,%d,%d,%s,%d,%d]",
-			ti,
-			ev.time,
-			ev.id or 0,
-			intern(self, ev.func_info),
-			intern(self, ev.linktype),
-			ev.link_id and tostring(ev.link_id) or "null",
-			ev.ir_count or 0,
-			ev.exit_count or 0
-		)
-	elseif ev.type == "trace_abort" then
-		return string_format(
-			"[%d,%.6f,%d,%s,%d,%d]",
-			ti,
-			ev.time,
-			ev.id or 0,
-			ev.abort_code and tostring(ev.abort_code) or "null",
-			intern(self, ev.abort_reason),
-			intern(self, ev.func_info)
-		)
-	else
-		return string_format("[%d,%.6f]", ti, ev.time)
-	end
-end
-
-local function encode_chunk(self--[[#: TProfile]], start_idx--[[#: number]], end_idx--[[#: number]])--[[#: (string, string)]]
-	local event_parts = {}
-
-	for i = start_idx, end_idx do
-		event_parts[#event_parts + 1] = encode_event(self, assert(self._events[i], "nil event"))
-	end
-
-	local string_parts = {}
-
-	for _, str in ipairs(get_new_strings(self)) do
-		string_parts[#string_parts + 1] = json_string(str)
-	end
-
-	return "[" .. table_concat(string_parts, ",") .. "]",
-	"[" .. table_concat(event_parts, ",") .. "]"
-end
-
--- --- HTML I/O ---
-local function begin_html(self--[[#: TProfile]])--[[#: File]]
-	local html = HTML_TEMPLATE
-	html = html:gsub("%%TITLE%%", self._id)
-	html = html:gsub("%%TITLE_JSON%%", function()
-		return json_string(self._id)
-	end)
-	html = html:gsub("%%ROOT_PATH_JSON%%", function()
-		return json_string((os.getenv("PWD") or ""):gsub("[\\/]+$", ""))
-	end)
-	html = html:gsub("%%FILE_URL_JSON%%", function()
-		return json_string(self._file_url)
-	end)
-	local f = assert(io.open(self._path, "w"))
-	f:write(html)
-	f:flush()
-	return f
-end
-
-local function write_chunk(self--[[#: TProfile]], start_idx--[[#: number]], end_idx--[[#: number]])
-	if start_idx > end_idx then return end
-
-	local f = self._file
-
-	if not f then return end
-
-	local strings_js, events_js = encode_chunk(self, start_idx, end_idx)
-	f:write("<script>_C(")
-	f:write(strings_js)
-	f:write(",")
-	f:write(events_js)
-	f:write(");</script>\n")
-	f:flush()
-end
-
-local function finish_html(self--[[#: TProfile]])
+	-- Write remaining events and close file
+	self:Save()
 	local f = self._file
 
 	if f then
@@ -586,107 +618,11 @@ local function finish_html(self--[[#: TProfile]])
 	end
 end
 
--- --- Constructor ---
-local function profiler_new(
-	config--[[#: {
-		id = string | nil,
-		path = string | nil,
-		file_url = string | nil,
-		mode = "line" | "function" | nil,
-		depth = number | nil,
-		sampling_rate = number | nil,
-		flush_interval = number | nil,
-		get_time = function=()>(number) | nil,
-	} | nil]]
-)
-	config = config or {}
-	local self = setmetatable({}, META)
-	-- Config
-	self._id = config.id or "global"
-	self._path = config.path or ("profile_summary_" .. self._id .. ".html")
-	local file_url = config.file_url or "vscode"
-	self._file_url = FILE_URL_TEMPLATES[file_url] or file_url
-	self._mode = config.mode or "line"
-	self._depth = config.depth or 500
-	self._sampling_rate = config.sampling_rate or 1
-	self._flush_interval = config.flush_interval or 3
-	self._get_time = config.get_time
-
-	if not self._get_time then
-		time_function = time_function or get_time_function()
-		self._get_time = time_function
-	end
-
-	-- Lifecycle
-	self._time_start = self._get_time()
-	self._running = true
-	-- Event accumulation
-	self._events = {}
-	self._event_count = 0
-	self._last_flush_time = 0
-	-- String interning
-	self._strings = {}
-	self._string_lookup = {}
-	self._string_count = 0
-	self._strings_flushed = 0
-	-- Section tracking
-	self._section_stack = {}
-	self._section_path = ""
-	self._simple_times = {}
-	self._simple_stack = {}
-	-- Trace tracking
-	self._traces = {}
-	self._trace_count = 0
-	self._aborted = {}
-	self._should_warn_mcode = create_warn_log(2)
-	self._should_warn_abort = create_warn_log(8)
-	-- HTML streaming
-	self._last_flushed_idx = 0
-	self._file = begin_html(self)
-	-- Attach trace events
-	attach_traces(self)
-	-- Start JIT profiler
-	start_sampling(self)
-	return self
-end
-
--- --- Public API ---
-function META:Save()
-	if not self._file then return end
-
-	local count = self._event_count
-
-	if count > self._last_flushed_idx then
-		write_chunk(self, self._last_flushed_idx + 1, count)
-		self._last_flushed_idx = count
-	end
-end
-
-function META:Stop()
-	if not self._running then return end
-
-	self._running = false
-	jprofile.stop()
-	-- Detach trace events
-	detach_traces(self)
-	-- Write remaining events and close file
-	self:Save()
-	finish_html(self)
-end
-
-function META:GetEvents()
-	return self._events, self._event_count
-end
-
-function META:GetSimpleSections()
-	return self._simple_times
-end
-
-function META:IsRunning()
+function Profiler:IsRunning()
 	return self._running
 end
 
-function META:GetElapsed()
+function Profiler:GetElapsed()
 	return self._get_time() - self._time_start
 end
 
@@ -696,7 +632,7 @@ HTML_TEMPLATE = [==[
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>NattLua Profile — %TITLE%</title>
+<title>Profiler</title>
 <style>
 :root {
   --accent:      #e0e0e0;
@@ -771,8 +707,8 @@ body { background: var(--bg-base); color: #e0e0e0; }
 .custom-cb { font-size: 13px; line-height: 1; font-family: monospace; display: inline-block; width: 1.1em; }
 #filter-panel .filter-all-btn, #filter-panel .filter-none-btn { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 2px 0; white-space: nowrap; font-size: 11px; user-select: none; }
 #filter-panel .filter-all-btn:hover, #filter-panel .filter-none-btn:hover { color: #fff; }
-#flamegraph-container { overflow: hidden; max-height: 0; transition: max-height 0.3s ease; flex-shrink: 0; }
-#flamegraph-container.open { max-height: 3000px; overflow-x: hidden; overflow-y: auto; flex: 1; }
+#flamegraph-container { overflow: hidden; max-height: 0; flex-shrink: 0; }
+#flamegraph-container.open { max-height: none; display: block; overflow-x: hidden; overflow-y: auto; flex: 1; }
 #flamegraph-canvas { width: 100%; min-height: 400px; }
 #tooltip { position: fixed; background: var(--bg-panel); border: 1px solid var(--border-strong); padding: 8px 12px; border-radius: 4px; font-size: 11px; pointer-events: none; display: none; z-index: 100; max-width: 500px; white-space: pre-wrap; line-height: 1.5; }
 .loc-link { color: var(--accent); text-decoration: none; opacity: 0.8; }
@@ -846,8 +782,6 @@ document.addEventListener('DOMContentLoaded', function() {
 const EVENTS = _decode(_S, _E);
 _S = null; _E = null;
 const TOTAL_TIME = EVENTS.length > 1 ? EVENTS[EVENTS.length-1].time - EVENTS[0].time : 0;
-const TITLE = %TITLE_JSON%;
-const ROOT_PATH = %ROOT_PATH_JSON%;
 const FILE_URL_TEMPLATE = %FILE_URL_JSON%;
 // --- File link helper ---
 function funcInfoLink(fi, label) {
@@ -857,8 +791,7 @@ function funcInfoLink(fi, label) {
   const m = fi.match(/^(.+):([0-9]+)$/);
   if (!m) return display;
   const [, filePath, line] = m;
-  const absPath = filePath.startsWith('/') ? filePath : ROOT_PATH + '/' + filePath;
-  const href = FILE_URL_TEMPLATE.replace(/\$\{path\}/g, absPath).replace(/\$\{line\}/g, line);
+  const href = FILE_URL_TEMPLATE.replace(/\$\{path\}/g, filePath).replace(/\$\{line\}/g, line);
   return `<a class="loc-link" href="${href}">${display}</a>`;
 }
 
@@ -2436,8 +2369,7 @@ fgCanvas.addEventListener('click', (ev) => {
       const m = r.label.match(/^(.+):([0-9]+)$/);
       if (m) {
         const [, filePath, line] = m;
-        const absPath = filePath.startsWith('/') ? filePath : ROOT_PATH + '/' + filePath;
-        window.location.href = `vscode://file/${absPath}:${line}:1`;
+        window.location.href = FILE_URL_TEMPLATE.replace(/\$\{path\}/g, filePath).replace(/\$\{line\}/g, line);
       }
       break;
     }
@@ -2496,4 +2428,4 @@ buildSectionFilter();
 </body>
 </html>
 ]==]
-return {New = profiler_new}
+return Profiler
