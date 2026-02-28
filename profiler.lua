@@ -722,14 +722,18 @@ body { background: var(--bg-base); color: #e0e0e0; }
 #header .stats { font-size: 12px; color: var(--text-muted); }
 #timeline-container { position: relative; background: #141414; border-bottom: none; overflow: hidden; cursor: crosshair; }
 #timeline-canvas { width: 100%; height: 100%; }
-#timeline-resize-handle { height: 7px; background: var(--bg-panel); border-bottom: 1px solid var(--border); cursor: ns-resize; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-#timeline-resize-handle::after { content: ''; width: 40px; height: 2px; background: var(--border-strong); border-radius: 1px; }
-#timeline-resize-handle:hover::after, #timeline-resize-handle.dragging::after { background: var(--accent); }
+.resize-handle { height: 7px; background: var(--bg-panel); border-bottom: 1px solid var(--border); cursor: ns-resize; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.resize-handle::after { content: ''; width: 40px; height: 2px; background: var(--border-strong); border-radius: 1px; }
+.resize-handle:hover::after, .resize-handle.dragging::after { background: var(--accent); }
 #selection-overlay { position: absolute; top: 0; background: var(--accent-dim); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); pointer-events: none; display: none; overflow: visible; }
 
 #timeline-controls { padding: 6px 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; font-size: 12px; flex-wrap: wrap; }
-#timeline-controls button { background: var(--bg-elevated); border: 1px solid var(--border-strong); color: #ccc; padding: 4px 12px; border-radius: 3px; cursor: pointer; font-size: 11px; }
-#timeline-controls button:hover { background: var(--bg-hover); border-color: var(--accent); }
+.panel-btn { background: var(--bg-elevated); border: 1px solid var(--border-strong); color: #ccc; padding: 4px 12px; border-radius: 3px; cursor: pointer; font-size: 11px; }
+.panel-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+.sel-star { font-size: 10px; color: var(--color-select); margin-left: 8px; }
+.btn-clear { margin-left: 6px; font-size: 10px; padding: 1px 7px; }
+.sel-time-label { position: absolute; bottom: 2px; font-size: 9px; color: #e0e0e0; white-space: nowrap; background: rgba(20,20,20,0.8); padding: 0 2px; }
+.empty-msg { padding: 12px; color: var(--text-dim); }
 #selection-info { color: var(--text-muted); }
 #fg-section-filter { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 6px 16px; display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; font-size: 11px; }
 #fg-section-filter label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; color: var(--text-muted); padding: 2px 0; }
@@ -740,14 +744,11 @@ body { background: var(--bg-base); color: #e0e0e0; }
 .section-header:hover button { color: #fff; background: rgba(255,255,255,0.04); }
 #trace-panel { background: var(--bg-panel); border-bottom: 1px solid var(--border); overflow: hidden; height: 0; }
 #trace-panel.open { overflow: auto; }
-#trace-panel-resize-handle { height: 7px; background: var(--bg-panel); border-bottom: 1px solid var(--border); cursor: ns-resize; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-#trace-panel-resize-handle::after { content: ''; width: 40px; height: 2px; background: var(--border-strong); border-radius: 1px; }
-#trace-panel-resize-handle:hover::after, #trace-panel-resize-handle.dragging::after { background: var(--accent); }
+
 #trace-sticky-top { position: sticky; top: 0; z-index: 2; background: var(--bg-panel); }
 #trace-filter-header { padding: 6px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
 #trace-filter-header:empty { display: none; }
-#trace-filter-header button { background: var(--bg-elevated); border: 1px solid var(--border-strong); color: #ccc; padding: 2px 10px; border-radius: 3px; cursor: pointer; font-size: 11px; }
-#trace-filter-header button:hover { background: var(--bg-hover); border-color: var(--accent); }
+#trace-filter-header .panel-btn { padding: 2px 10px; }
 #trace-panel table { width: 100%; border-collapse: collapse; font-size: 11px; }
 #trace-panel th { position: sticky; z-index: 2; background: var(--bg-elevated); padding: 6px 10px; text-align: left; color: var(--accent); border-bottom: 1px solid var(--border-strong); font-weight: 600; cursor: pointer; user-select: none; }
 #trace-panel th:hover { color: #fff; }
@@ -788,20 +789,20 @@ body { background: var(--bg-base); color: #e0e0e0; }
   <span class="stats" id="stats"></span>
 </div>
 <div id="timeline-controls">
-  <button id="btn-reset">reset zoom</button>
-  <button id="btn-zoom-sel">zoom to selection</button>
+  <button id="btn-reset" class="panel-btn">reset zoom</button>
+  <button id="btn-zoom-sel" class="panel-btn">zoom to selection</button>
   <span id="selection-info">Click and drag on timeline to select a region</span>
 </div>
 <div id="timeline-container">
   <canvas id="timeline-canvas"></canvas>
-  <div id="selection-overlay"><span id="sel-t-start" style="position:absolute;bottom:2px;left:3px;font-size:9px;color:#e0e0e0;white-space:nowrap;background:rgba(20,20,20,0.8);padding:0 2px"></span><span id="sel-t-end" style="position:absolute;bottom:2px;right:3px;font-size:9px;color:#e0e0e0;white-space:nowrap;background:rgba(20,20,20,0.8);padding:0 2px"></span></div>
+  <div id="selection-overlay"><span id="sel-t-start" class="sel-time-label" style="left:3px"></span><span id="sel-t-end" class="sel-time-label" style="right:3px"></span></div>
 </div>
-<div id="timeline-resize-handle"></div>
+<div id="timeline-resize-handle" class="resize-handle"></div>
 <div class="section-header">
   <button id="btn-toggle-aborts">▼ trace list</button>
 </div>
 <div id="trace-panel" class="open"></div>
-<div id="trace-panel-resize-handle"></div>
+<div id="trace-panel-resize-handle" class="resize-handle"></div>
 <div class="section-header">
   <button id="btn-toggle-fg">▼ flamegraph</button>
 </div>
@@ -1034,6 +1035,13 @@ function scheduleFlamegraph(lo, hi) {
   }, 120);
 }
 
+function refreshView(lo, hi, immediate) {
+  drawTimeline();
+  updateSelOverlay();
+  if (immediate) { drawFlamegraph(lo, hi); drawVmPie(lo, hi); }
+  else scheduleFlamegraph(lo, hi);
+}
+
 // --- Stats ---
 document.getElementById('stats').textContent = `${EVENTS.length} events | ${TOTAL_TIME.toFixed(3)}s total`;
 
@@ -1042,14 +1050,8 @@ const VM_STATE_ORDER = ['N','I','C','G','J'];
 function drawVmPie(lo, hi) {
   const canvas = document.getElementById('vm-pie-canvas');
   if (!canvas) return;
-  const dpr = window.devicePixelRatio || 1;
   const size = 72;
-  canvas.width = size * dpr;
-  canvas.height = size * dpr;
-  canvas.style.width = size + 'px';
-  canvas.style.height = size + 'px';
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const ctx = setupCanvas(canvas, size, size);
 
   // Count samples in range
   const rangeCounts = {};
@@ -1151,6 +1153,14 @@ function traceStatusLabel(span) {
 let traceListSortKey = 'id';
 let traceListSortAsc = true;
 
+function clearSelectionHtml(spanId, label) {
+  return ' <span class="sel-star">&#9733; ' + label + '</span><button id="btn-clear-selection" class="panel-btn btn-clear">Clear</button>';
+}
+function wireClearBtn(lo, hi) {
+  const btn = document.getElementById('btn-clear-selection');
+  if (btn) btn.addEventListener('click', () => { selectedSpan = null; drawTimeline(); buildTraceListPanel(lo, hi); });
+}
+
 function buildTraceListPanel(tStart, tEnd) {
   const lo = tStart !== undefined ? tStart : viewStart;
   const hi = tEnd !== undefined ? tEnd : viewEnd;
@@ -1190,12 +1200,11 @@ function buildTraceListPanel(tStart, tEnd) {
   const container = document.getElementById('trace-panel');
   if (visible.length === 0) {
     let emptyHdr = '<div id="trace-sticky-top"><div id="trace-filter-header">';
-    if (selectedSpan) emptyHdr += ' <span style="font-size:10px;color:#ffc832;margin-left:8px">&#9733; #' + selectedSpan.id + '</span><button id="btn-clear-selection" style="margin-left:6px;font-size:10px;padding:1px 7px">Clear</button>';
-    emptyHdr += '</div><div id="filter-panel"></div></div><div style="padding:12px;color:#666">No traces in range.</div>';
+    if (selectedSpan) emptyHdr += clearSelectionHtml(selectedSpan.id, '#' + selectedSpan.id);
+    emptyHdr += '</div><div id="filter-panel"></div></div><div class="empty-msg">No traces in range.</div>';
     container.innerHTML = emptyHdr;
     buildFilterPanel(lo, hi);
-    const clearBtn = document.getElementById('btn-clear-selection');
-    if (clearBtn) clearBtn.addEventListener('click', () => { selectedSpan = null; drawTimeline(); buildTraceListPanel(lo, hi); });
+    wireClearBtn(lo, hi);
     return;
   }
 
@@ -1223,8 +1232,7 @@ function buildTraceListPanel(tStart, tEnd) {
   };
   let html = '<div id="trace-sticky-top"><div id="trace-filter-header">';
   if (selectedSpan) {
-    html += ' <span style="font-size:10px;color:#ffc832;margin-left:8px">&#9733; Showing tree for #' + selectedSpan.id + '</span>';
-    html += ' <button id="btn-clear-selection" style="margin-left:6px;font-size:10px;padding:1px 7px">Clear</button>';
+    html += clearSelectionHtml(selectedSpan.id, 'Showing tree for #' + selectedSpan.id);
   }
   html += '</div><div id="filter-panel"></div></div>';
   html += '<table><tr>' + hdr('id','id') + hdr('status','status') + hdr('depth','depth') + hdr('location','location') +
@@ -1250,14 +1258,7 @@ function buildTraceListPanel(tStart, tEnd) {
   container.innerHTML = html;
 
   buildFilterPanel(lo, hi);
-  const clearSelBtn = document.getElementById('btn-clear-selection');
-  if (clearSelBtn) {
-    clearSelBtn.addEventListener('click', () => {
-      selectedSpan = null;
-      drawTimeline();
-      buildTraceListPanel(lo, hi);
-    });
-  }
+  wireClearBtn(lo, hi);
   // Keep th top in sync with sticky wrapper height
   const stickyTop = document.getElementById('trace-sticky-top');
   if (stickyTop) {
@@ -1497,6 +1498,30 @@ const tlCtx = tlCanvas.getContext('2d');
 const selOverlay = document.getElementById('selection-overlay');
 const tooltip = document.getElementById('tooltip');
 
+function showTooltip(html, x, y) {
+  tooltip.innerHTML = html;
+  tooltip.style.pointerEvents = 'none';
+  tooltip.style.display = 'block';
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+function hideTooltip() { tooltip.style.display = 'none'; }
+
+function formatSelInfo(lo, hi) {
+  return 'selected: ' + (hi - lo).toFixed(4) + 's (' + lo.toFixed(4) + 's \u2014 ' + hi.toFixed(4) + 's)';
+}
+
+function setupCanvas(canvas, w, h) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
+}
+
 function eventColor(e) {
   switch(e.type) {
     case 'sample': return sampleColor(e);
@@ -1512,19 +1537,13 @@ function eventColor(e) {
 
 function resizeCanvas(canvas) {
   const rect = canvas.parentElement.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  canvas.style.width = rect.width + 'px';
-  canvas.style.height = rect.height + 'px';
-  return dpr;
+  setupCanvas(canvas, rect.width, rect.height);
+  return rect;
 }
 
 function drawTimeline() {
-  const dpr = resizeCanvas(tlCanvas);
-  const W = tlCanvas.width, H = tlCanvas.height;
-  tlCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const w = W / dpr, h = H / dpr;
+  const rect = resizeCanvas(tlCanvas);
+  const w = rect.width, h = rect.height;
 
   const currentRange = (selStart !== null && selEnd !== null) 
     ? [Math.min(selStart, selEnd), Math.max(selStart, selEnd)] 
@@ -1976,7 +1995,7 @@ function formatSpanTooltip(span) {
 }
 
 tlCanvas.addEventListener('mousedown', (ev) => {
-  tooltip.style.display = 'none';
+  hideTooltip();
   const rect = getTlRect();
   const mouseY = ev.clientY - rect.top;
   const curSampleH = Math.min(35, Math.round(rect.height * 0.14));
@@ -2060,14 +2079,10 @@ tlCanvas.addEventListener('mousemove', (ev) => {
   }
 
   if (tooltipContent) {
-    tooltip.innerHTML = tooltipContent;
-    tooltip.style.pointerEvents = 'none';
-    tooltip.style.display = 'block';
-    tooltip.style.left = Math.min(ev.clientX + 15, window.innerWidth - 520) + 'px';
-    tooltip.style.top = (ev.clientY + 15) + 'px';
+    showTooltip(tooltipContent, Math.min(ev.clientX + 15, window.innerWidth - 520), ev.clientY + 15);
     tlCanvas.style.cursor = 'pointer';
   } else {
-    tooltip.style.display = 'none';
+    hideTooltip();
     tlCanvas.style.cursor = inSampleRegion ? 'crosshair' : 'grab';
   }
 });
@@ -2080,7 +2095,7 @@ tlCanvas.addEventListener('mouseenter', () => {
 tlCanvas.addEventListener('mouseleave', () => {
   tlHovered = false;
   if (!dragMode) {
-    tooltip.style.display = 'none';
+    hideTooltip();
     tlCanvas.style.cursor = 'crosshair';
     if (lastHoveredSpan) {
       lastHoveredSpan = null;
@@ -2107,10 +2122,8 @@ window.addEventListener('mousemove', (ev) => {
     viewStart = Math.max(0, newStart);
     viewEnd = Math.min(timeDuration, newEnd);
     selStart = viewStart; selEnd = viewEnd;
-    document.getElementById('selection-info').textContent = `selected: ${(viewEnd - viewStart).toFixed(4)}s (${viewStart.toFixed(4)}s \u2014 ${viewEnd.toFixed(4)}s)`;
-    drawTimeline();
-    updateSelOverlay();
-    scheduleFlamegraph(viewStart, viewEnd);
+    document.getElementById('selection-info').textContent = formatSelInfo(viewStart, viewEnd);
+    refreshView(viewStart, viewEnd);
   }
 });
 
@@ -2127,7 +2140,7 @@ window.addEventListener('mouseup', () => {
         lo = viewStart; hi = viewEnd;
       }
       const info = document.getElementById('selection-info');
-      info.textContent = `selected: ${(hi - lo).toFixed(4)}s (${lo.toFixed(4)}s \u2014 ${hi.toFixed(4)}s)`;
+      info.textContent = formatSelInfo(lo, hi);
       updateSelOverlay();
       drawFlamegraph(lo, hi);
     }
@@ -2173,11 +2186,8 @@ function updateSelOverlay() {
 document.getElementById('btn-reset').addEventListener('click', () => {
   viewStart = 0; viewEnd = timeDuration;
   selStart = 0; selEnd = timeDuration;
-  document.getElementById('selection-info').textContent = `selected: ${timeDuration.toFixed(4)}s (0.0000s \u2014 ${timeDuration.toFixed(4)}s)`;
-  drawTimeline();
-  updateSelOverlay();
-  drawFlamegraph(0, timeDuration);
-  drawVmPie(0, timeDuration);
+  document.getElementById('selection-info').textContent = formatSelInfo(0, timeDuration);
+  refreshView(0, timeDuration, true);
 });
 
 document.getElementById('btn-zoom-sel').addEventListener('click', () => {
@@ -2186,10 +2196,8 @@ document.getElementById('btn-zoom-sel').addEventListener('click', () => {
     if (hi - lo > 0.0001) {
       viewStart = lo; viewEnd = hi;
       selStart = viewStart; selEnd = viewEnd;
-      document.getElementById('selection-info').textContent = `selected: ${(viewEnd - viewStart).toFixed(4)}s (${viewStart.toFixed(4)}s \u2014 ${viewEnd.toFixed(4)}s)`;
-      drawTimeline();
-      updateSelOverlay();
-      drawFlamegraph(viewStart, viewEnd);
+      document.getElementById('selection-info').textContent = formatSelInfo(viewStart, viewEnd);
+      refreshView(viewStart, viewEnd, true);
     }
   }
 });
@@ -2205,30 +2213,40 @@ tlCanvas.addEventListener('wheel', (ev) => {
   viewEnd = Math.min(timeDuration, newEnd);
   // Keep selection in sync with view
   selStart = viewStart; selEnd = viewEnd;
-  document.getElementById('selection-info').textContent = `selected: ${(viewEnd - viewStart).toFixed(4)}s (${viewStart.toFixed(4)}s \u2014 ${viewEnd.toFixed(4)}s)`;
+  document.getElementById('selection-info').textContent = formatSelInfo(viewStart, viewEnd);
   // Canvas redraws immediately; panels + flamegraph are debounced to avoid
   // rebuilding expensive DOM on every wheel tick.
-  drawTimeline();
-  updateSelOverlay();
-  scheduleFlamegraph(viewStart, viewEnd);
+  refreshView(viewStart, viewEnd);
 }, {passive: false});
+
+// --- Resize handle helper ---
+function makeResizable(handle, minH, getH, setH) {
+  let dragging = false, startY = 0, startH = 0;
+  handle.addEventListener('mousedown', (ev) => {
+    dragging = true; startY = ev.clientY; startH = getH();
+    handle.classList.add('dragging'); ev.preventDefault();
+  });
+  window.addEventListener('mousemove', (ev) => {
+    if (!dragging) return;
+    setH(Math.max(minH, startH + (ev.clientY - startY)));
+  });
+  window.addEventListener('mouseup', () => {
+    if (dragging) { dragging = false; handle.classList.remove('dragging'); }
+  });
+}
 
 // --- Timeline resize handle ---
 const tlContainer = document.getElementById('timeline-container');
-const resizeHandle = document.getElementById('timeline-resize-handle');
 const tracePanel = document.getElementById('trace-panel');
-const tracePanelResizeHandle = document.getElementById('trace-panel-resize-handle');
 const TRACE_PANEL_DEFAULT_H = 280;
 let tracePanelH = TRACE_PANEL_DEFAULT_H;
 tracePanel.style.height = tracePanelH + 'px';
-let tpResizeDragging = false, tpResizeStartY = 0, tpResizeStartH = 0;
-tracePanelResizeHandle.addEventListener('mousedown', (ev) => {
-  tpResizeDragging = true;
-  tpResizeStartY = ev.clientY;
-  tpResizeStartH = tracePanelH;
-  tracePanelResizeHandle.classList.add('dragging');
-  ev.preventDefault();
-});
+
+makeResizable(document.getElementById('trace-panel-resize-handle'), 60,
+  () => tracePanelH,
+  (h) => { tracePanelH = h; tracePanel.style.height = h + 'px'; }
+);
+
 function computeDefaultTimelineH() {
   const r = 0.75, minH = 3, maxH = 20;
   // Sum of clamped exponential lane heights
@@ -2237,31 +2255,11 @@ function computeDefaultTimelineH() {
   // sampleH capped at 35px; traceY = sampleH+4; traceH = lanesH+6
   return Math.max(80, Math.round(35 + 4 + lanesH + 6));
 }
-let tlResizeDragging = false, tlResizeStartY = 0, tlResizeStartH = 0;
-resizeHandle.addEventListener('mousedown', (ev) => {
-  tlResizeDragging = true;
-  tlResizeStartY = ev.clientY;
-  tlResizeStartH = timelineContainerH;
-  resizeHandle.classList.add('dragging');
-  ev.preventDefault();
-});
-window.addEventListener('mousemove', (ev) => {
-  if (tlResizeDragging) {
-    timelineContainerH = Math.max(40, tlResizeStartH + (ev.clientY - tlResizeStartY));
-    tlContainer.style.height = timelineContainerH + 'px';
-    invalidateTlRect();
-    drawTimeline();
-    updateSelOverlay();
-  }
-  if (tpResizeDragging) {
-    tracePanelH = Math.max(60, tpResizeStartH + (ev.clientY - tpResizeStartY));
-    tracePanel.style.height = tracePanelH + 'px';
-  }
-});
-window.addEventListener('mouseup', () => {
-  if (tlResizeDragging) { tlResizeDragging = false; resizeHandle.classList.remove('dragging'); }
-  if (tpResizeDragging) { tpResizeDragging = false; tracePanelResizeHandle.classList.remove('dragging'); }
-});
+
+makeResizable(document.getElementById('timeline-resize-handle'), 40,
+  () => timelineContainerH,
+  (h) => { timelineContainerH = h; tlContainer.style.height = h + 'px'; invalidateTlRect(); drawTimeline(); updateSelOverlay(); }
+);
 
 // --- Flamegraph ---
 const fgCanvas = document.getElementById('flamegraph-canvas');
@@ -2317,15 +2315,10 @@ const FG_MIN_WIDTH_PX = 2;
 
 function drawFlamegraph(tStart, tEnd) {
   const {root, maxDepth, totalSamples} = buildFlamegraph(tStart, tEnd);
-  const dpr = window.devicePixelRatio || 1;
   const containerW = fgCanvas.parentElement.clientWidth;
   const canvasH = Math.max(400, (maxDepth + 2) * FG_ROW_HEIGHT + 40);
 
-  fgCanvas.width = containerW * dpr;
-  fgCanvas.height = canvasH * dpr;
-  fgCanvas.style.width = containerW + 'px';
-  fgCanvas.style.height = canvasH + 'px';
-  fgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  setupCanvas(fgCanvas, containerW, canvasH);
 
   fgCtx.fillStyle = COLORS.bgBase;
   fgCtx.fillRect(0, 0, containerW, canvasH);
@@ -2422,15 +2415,11 @@ fgCanvas.addEventListener('mousemove', (ev) => {
   if (hit) {
     const pct = ((hit.count / hit.total) * 100).toFixed(1);
     const selfPct = ((hit.self / hit.total) * 100).toFixed(1);
-    tooltip.innerHTML = `<b>${hit.label}</b>\n${hit.count} samples (${pct}%)\nself: ${hit.self} (${selfPct}%)`;
-    tooltip.style.pointerEvents = 'none';
-    tooltip.style.display = 'block';
-    tooltip.style.left = (ev.clientX + 12) + 'px';
-    tooltip.style.top = (ev.clientY - 10) + 'px';
+    showTooltip(`<b>${hit.label}</b>\n${hit.count} samples (${pct}%)\nself: ${hit.self} (${selfPct}%)`, ev.clientX + 12, ev.clientY - 10);
     // Show pointer cursor if the frame is navigable
     fgCanvas.style.cursor = hit.label.match(/^.+:[0-9]+$/) ? 'pointer' : 'default';
   } else {
-    tooltip.style.display = 'none';
+    hideTooltip();
     fgCanvas.style.cursor = 'default';
   }
 });
@@ -2455,7 +2444,7 @@ fgCanvas.addEventListener('click', (ev) => {
   }
 });
 
-fgCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+fgCanvas.addEventListener('mouseleave', () => { hideTooltip(); });
 
 // --- Init ---
 timelineContainerH = computeDefaultTimelineH();
@@ -2498,12 +2487,9 @@ vmPieCanvas.addEventListener('mouseleave', () => {
   }
 });
 
-window.addEventListener('resize', () => { invalidateTlRect(); drawTimeline(); updateSelOverlay(); drawFlamegraph(viewStart, viewEnd); drawVmPie(selStart, selEnd); });
-document.getElementById('selection-info').textContent = `selected: ${timeDuration.toFixed(4)}s (0.0000s \u2014 ${timeDuration.toFixed(4)}s)`;
-drawTimeline();
-updateSelOverlay();
-drawFlamegraph(0, timeDuration);
-drawVmPie(0, timeDuration);
+window.addEventListener('resize', () => { invalidateTlRect(); refreshView(viewStart, viewEnd, true); });
+document.getElementById('selection-info').textContent = formatSelInfo(0, timeDuration);
+refreshView(0, timeDuration, true);
 buildSectionFilter();
 }); // end DOMContentLoaded
 </script>

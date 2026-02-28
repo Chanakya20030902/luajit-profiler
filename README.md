@@ -1,38 +1,27 @@
-# luajit-profiler
+A luajit profiler that builds an interactive static html page with a timeline. You can refresh the static html page while it's runnning to get updates. It should also be possible to click on file paths to open them in your editor, assuming your editor supports uri schemes.
 
-a luajit profiler that builds an interactive static html page with a timeline. you can refresh the static html page while it's runnning to get updates.
+It's not final yet. I'm looking for some feedback, especially when it comes to the UI design. The HTML portion is mostly vibe coded, though with extensive design feedback, so it's a bit hard to maintain by humans.
 
-`luajit -e "local p = require('profiler').New() require('bench') p:Stop()"`
+```lua
+local Profiler = require('profiler')
+-- config is optional, all values are default
+local p = Profiler.New({
+    path = "./output.html",
+    file_url = "vscode://file/${path}:${line}:1",
+    flush_interval = 3, -- in seconds
+    sampling_rate = 1, -- the jit profiler sampling rate in ms
+    depth = 500, -- the depth of the callstack when the jit profiler interupts. should be high for a detailed flamegraph.
+}) 
+do
+    -- some expensive code here
+end
+
+do
+    p:StartSection("foo")
+    -- something else here
+    p:StopSection()
+end
+p:Stop()
+```
 
 <img width="1130" height="1463" alt="image" src="https://github.com/user-attachments/assets/fd4d93d9-8160-4461-ae9f-440e6e8f8bf6" />
-
-## API Reference
-
-### `profiler.New(config)`
-creates and starts a new profiler instance. (i know jit profiling only supports 1 running function but whatever)
-*   `config.id`: (string) uid for the profile. default: `"global"`
-*   `config.path`: (string) output path for the HTML file. default: `"profile_summary_[id].html"`
-*   `config.file_url`: (string) `"vscode" | "sublime" | "atom"` or custom template string for file location links. default: `"vscode"`
-*   `config.depth`: (number) maximum stack depth. default: `500`
-*   `config.sampling_rate`: (number) seconds between samples. default: `1`
-*   `config.flush_interval`: (number) onterval for steaming data updates. default: `3` seconds
-
-### `p:Stop()`
-stops the profiler and finishes writing the html page.
-
-### `p:Save()`
-flushes any pending events to the html page without stopping.
-
-### `p:StartSection(name)`
-marks the start of a logical section in the timeline and flamegraph.
-
-### `p:StopSection()`
-marks the end of the current section.
-
-
-### `p:IsRunning()`
-...
-
-### `p:GetElapsed()`
-returns the seconds since the profiler started
-
