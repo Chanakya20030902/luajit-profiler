@@ -672,16 +672,28 @@ body { background: var(--bg-base); color: #e0e0e0; overflow-x: hidden; }
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
 ::-webkit-scrollbar-corner { background: var(--bg-base); }
 
-#header { padding: 8px 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+#header { padding: 8px 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: relative; }
 #header .stats { font-size: 13px; color: var(--text-muted); line-height: 1.4; }
 #header .stats b { color: #fff; }
+#header .header-controls { margin-left: auto; position: relative; display: flex; align-items: center; }
+.options-gear { cursor: pointer; color: var(--text-dim); padding: 4px; border-radius: 4px; transition: color 0.2s, background 0.2s; user-select: none; font-size: 16px; }
+.options-gear:hover { color: #fff; background: var(--bg-elevated); }
+.options-dropdown { position: absolute; top: calc(100% + 8px); right: 0; background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 6px; padding: 10px; min-width: 160px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none; flex-direction: column; gap: 8px; }
+.options-dropdown.open { display: flex; }
+.options-dropdown label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 11px; color: var(--text-muted); white-space: nowrap; user-select: none; }
+.options-dropdown label:hover { color: #fff; }
 #timeline-container { position: relative; background: #141414; border-bottom: none; cursor: crosshair; flex-shrink: 0; display: none; }
 #timeline-container.open { display: block; }
 #timeline-canvas { width: 100%; height: 100%; }
-.resize-handle { height: 7px; background: var(--bg-panel); border-bottom: 1px solid var(--border); cursor: ns-resize; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tl-overlay-btn { position: absolute; font-size: 9px; font-weight: bold; color: var(--accent); white-space: nowrap; background: var(--bg-panel); border: 1px solid var(--accent-dim); padding: 0px 3px; border-radius: 3px; z-index: 110; cursor: pointer; user-select: none; opacity: 0.9; transition: opacity 0.2s, background 0.2s, color 0.2s, border-color 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+.tl-overlay-btn:hover { background: var(--accent); color: var(--bg-elevated); opacity: 1; border-color: transparent; }
+#btn-reset { bottom: -14px; left: 8px; display: none; }
+#btn-zoom-sel { bottom: -14px; left: 0; display: none; }
+.resize-handle { height: 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); cursor: ns-resize; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .resize-handle::after { content: ''; width: 40px; height: 2px; background: var(--border-strong); border-radius: 1px; }
 .resize-handle:hover::after, .resize-handle.dragging::after { background: var(--accent); }
 #selection-overlay { position: absolute; top: 0; bottom: 0; background: var(--accent-dim); border-left: 1px solid var(--accent); border-right: 1px solid var(--accent); pointer-events: none; display: none; overflow: visible; z-index: 10; }
+#selection-overlay .tl-overlay-btn { pointer-events: auto; }
 #selection-overlay::before, #selection-overlay::after { content: ''; position: absolute; top: 0; width: 1px; height: 100%; background: var(--accent); }
 #selection-overlay::before { left: -1px; }
 #selection-overlay::after { right: -1px; }
@@ -766,22 +778,29 @@ body { background: var(--bg-base); color: #e0e0e0; overflow-x: hidden; }
 <div id="header">
   <div id="vm-pie-wrap"><canvas id="vm-pie-canvas" width="72" height="72"></canvas></div>
   <span class="stats" id="stats"></span>
+  <div class="header-controls">
+    <div class="options-gear" id="btn-toggle-options" title="Settings">⚙</div>
+    <div class="options-dropdown" id="options-dropdown">
+      <label id="lbl-hover-preview">
+        <span class="custom-cb" id="cb-hover-preview-indicator">☐</span>
+        <input type="checkbox" id="cb-hover-preview" style="display:none"> hover preview
+      </label>
+    </div>
+  </div>
 </div>
 <div class="section-header">
   <button id="btn-toggle-samples">▼ samples</button>
 </div>
 <div id="sample-filter-panel" class="open"></div>
-<div id="timeline-controls" class="open">
-  <button id="btn-reset" class="panel-btn">reset zoom</button>
-  <button id="btn-zoom-sel" class="panel-btn">zoom to selection</button>
-</div>
 <div id="timeline-container" class="open">
   <canvas id="timeline-canvas"></canvas>
+  <button id="btn-reset" class="tl-overlay-btn">reset zoom</button>
   <div id="selection-overlay">
     <div class="sel-pin left"></div>
     <div class="sel-pin right"></div>
     <span id="sel-t-start" class="sel-time-label" style="left:0;"></span>
     <span id="sel-t-end" class="sel-time-label" style="left:100%;"></span>
+    <button id="btn-zoom-sel" class="tl-overlay-btn">zoom to selection</button>
   </div>
 </div>
 <div id="timeline-resize-handle" class="resize-handle"></div>
@@ -926,6 +945,8 @@ let viewStart = 0, viewEnd = timeDuration;
 let selStart = 0, selEnd = timeDuration;
 let dragMode = null; // null | 'select' | 'pan'
 let panStartX = 0, panViewStart0 = 0, panViewEnd0 = 0;
+let autoScrollTimer = null;
+let lastSelectX = 0;
 let sampleH = 60; // updated each draw
 let tlHovered = false;
 let pieHoveredState = null; // vm_state key hovered on pie chart
@@ -954,6 +975,7 @@ let hoverCategory = null;
 let hoverAbortReason = null;
 let hoverState = null;
 let hoverSection = null;
+const isHoverPreviewEnabled = () => document.getElementById('cb-hover-preview')?.checked;
 
 function buildSampleFilterPanel(lo, hi) {
   const panel = document.getElementById('sample-filter-panel');
@@ -1025,10 +1047,12 @@ function buildSampleFilterPanel(lo, hi) {
       schedulePanelUpdate(lo, hi);
     });
     label.addEventListener('mouseenter', () => {
+      if (!isHoverPreviewEnabled()) return;
       hoverState = label.dataset.state;
       drawTimeline();
     });
     label.addEventListener('mouseleave', () => {
+      if (!isHoverPreviewEnabled()) return;
       hoverState = null;
       drawTimeline();
     });
@@ -1739,11 +1763,13 @@ function buildFilterPanel(tStart, tEnd) {
       scheduleFlamegraph(lo, hi);
     });
     label.addEventListener('mouseenter', () => {
+      if (!isHoverPreviewEnabled()) return;
       const idx = parseInt(label.dataset.catIdx);
       hoverCategory = categoryList[idx][0];
       drawTimeline();
     });
     label.addEventListener('mouseleave', () => {
+      if (!isHoverPreviewEnabled()) return;
       hoverCategory = null;
       drawTimeline();
     });
@@ -1790,12 +1816,14 @@ function buildFilterPanel(tStart, tEnd) {
       scheduleFlamegraph(lo, hi);
     });
     label.addEventListener('mouseenter', () => {
+      if (!isHoverPreviewEnabled()) return;
       const idx = parseInt(label.dataset.reasonIdx);
       hoverAbortReason = abortReasonList[idx][0];
       hoverCategory = 'aborted';
       drawTimeline();
     });
     label.addEventListener('mouseleave', () => {
+      if (!isHoverPreviewEnabled()) return;
       hoverAbortReason = null;
       hoverCategory = null;
       drawTimeline();
@@ -2240,7 +2268,8 @@ function drawTimeline() {
 function tlXToTime(clientX) {
   const rect = getTlRect();
   const frac = (clientX - rect.left) / rect.width;
-  return viewStart + frac * (viewEnd - viewStart);
+  const t = viewStart + frac * (viewEnd - viewStart);
+  return Math.max(0, Math.min(timeDuration, t));
 }
 
 // --- Timeline tooltip ---
@@ -2437,7 +2466,42 @@ tlCanvas.addEventListener('mouseleave', () => {
 window.addEventListener('mousemove', (ev) => {
   if (!dragMode) return;
   if (dragMode === 'select') {
+    lastSelectX = ev.clientX;
     selEnd = tlXToTime(ev.clientX);
+    
+    // Auto-scroll logic
+    const rect = getTlRect();
+    const margin = 25;
+    const relX = ev.clientX - rect.left;
+    
+    if (relX < margin || relX > rect.width - margin) {
+      if (!autoScrollTimer) {
+        autoScrollTimer = setInterval(() => {
+          const rect = getTlRect();
+          const relX = lastSelectX - rect.left;
+          const vDur = viewEnd - viewStart;
+          let dt = 0;
+          
+          if (relX < margin) {
+            dt = -vDur * 0.05;
+          } else if (relX > rect.width - margin) {
+            dt = vDur * 0.05;
+          }
+          
+          const newStart = Math.max(0, Math.min(timeDuration - vDur, viewStart + dt));
+          if (newStart !== viewStart) {
+            viewStart = newStart;
+            viewEnd = newStart + vDur;
+            selEnd = tlXToTime(lastSelectX);
+            refreshView(viewStart, viewEnd);
+          }
+        }, 30);
+      }
+    } else if (autoScrollTimer) {
+      clearInterval(autoScrollTimer);
+      autoScrollTimer = null;
+    }
+    
     updateSelOverlay();
   } else if (dragMode === 'pan') {
     const rect = getTlRect();
@@ -2458,11 +2522,21 @@ window.addEventListener('mouseup', () => {
   if (!dragMode) return;
   const mode = dragMode;
   dragMode = null;
+  if (autoScrollTimer) {
+    clearInterval(autoScrollTimer);
+    autoScrollTimer = null;
+  }
   if (mode === 'select') {
     if (selStart !== null && selEnd !== null) {
       let lo = Math.min(selStart, selEnd), hi = Math.max(selStart, selEnd);
-      updateSelOverlay();
-      drawFlamegraph(lo, hi);
+      // If selection is too small (e.g. a single click), reset selection to full view
+      if (hi - lo < 0.000001) {
+        selStart = viewStart; selEnd = viewEnd;
+        refreshView(viewStart, viewEnd, true);
+      } else {
+        updateSelOverlay();
+        drawFlamegraph(lo, hi);
+      }
     }
   } else if (mode === 'pan') {
     tlCanvas.style.cursor = 'grab';
@@ -2482,9 +2556,16 @@ window.addEventListener('mouseup', () => {
 });
 
 function updateSelOverlay() {
-  if (selStart === null || selEnd === null) { selOverlay.style.display = 'none'; return; }
-  const rect = getTlRect();
   const vDur = viewEnd - viewStart || 1;
+  const isZoomed = (viewStart > 0.0001 || viewEnd < timeDuration - 0.0001);
+  const btnReset = document.getElementById('btn-reset');
+  if (btnReset) btnReset.style.display = isZoomed ? 'block' : 'none';
+
+  if (selStart === null || selEnd === null) {
+    selOverlay.style.display = 'none';
+    return;
+  }
+  const rect = getTlRect();
   const lo = Math.min(selStart, selEnd), hi = Math.max(selStart, selEnd);
   const lx = ((lo - viewStart) / vDur) * rect.width;
   const rx = ((hi - viewStart) / vDur) * rect.width;
@@ -2492,6 +2573,13 @@ function updateSelOverlay() {
   selOverlay.style.left = lx + 'px';
   selOverlay.style.width = Math.max(1, rx - lx) + 'px';
   selOverlay.style.display = 'block';
+
+  const btnZoom = document.getElementById('btn-zoom-sel');
+  const isFullSelection = (lo <= viewStart + 0.0001 && hi >= viewEnd - 0.0001);
+  if (btnZoom) {
+    const sWidth = Math.max(1, rx - lx);
+    btnZoom.style.display = (hi - lo > 0.0001 && sWidth > 40 && !isFullSelection) ? 'block' : 'none';
+  }
 
   // Exception for 0-100% full selection
   const isFull = (lx <= 0 && rx >= rect.width);
@@ -2521,6 +2609,29 @@ function updateSelOverlay() {
 
   schedulePanelUpdate(lo, hi);
 }
+
+// --- Options Dropdown ---
+const btnOptions = document.getElementById('btn-toggle-options');
+const optionsDropdown = document.getElementById('options-dropdown');
+const cbHoverPreview = document.getElementById('cb-hover-preview');
+const cbHoverIndicator = document.getElementById('cb-hover-preview-indicator');
+
+btnOptions.addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  optionsDropdown.classList.toggle('open');
+});
+
+document.addEventListener('click', (ev) => {
+  if (!optionsDropdown.contains(ev.target) && ev.target !== btnOptions) {
+    optionsDropdown.classList.remove('open');
+  }
+});
+
+cbHoverPreview.parentElement.addEventListener('click', () => {
+  cbHoverPreview.checked = !cbHoverPreview.checked;
+  cbHoverIndicator.textContent = cbHoverPreview.checked ? '☑' : '☐';
+  drawTimeline();
+});
 
 document.getElementById('btn-reset').addEventListener('click', () => {
   viewStart = 0; viewEnd = timeDuration;
